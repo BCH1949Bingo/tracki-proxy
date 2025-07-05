@@ -1,6 +1,8 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const qs = require('qs');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -14,15 +16,24 @@ const config = {
 
 let accessToken = null;
 
-// Beispiel: statisches Token holen (normalerweise müsste man OAuth2 autorisieren)
 async function getAccessToken() {
   try {
-    const response = await axios.post("https://plus.trackimo.com/api/v2/oauth/token", {
-      client_id: config.client_id,
-      client_secret: config.client_secret,
-      grant_type: "client_credentials"
-    });
+    const response = await axios.post(
+      "https://plus.trackimo.com/api/v2/oauth/token",
+      qs.stringify({
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+        grant_type: "client_credentials",
+        redirect_uri: config.redirect_uri
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
     accessToken = response.data.access_token;
+    console.log("Token erhalten:", accessToken);
   } catch (error) {
     console.error("Token error:", error.response?.data || error.message);
   }
@@ -39,7 +50,6 @@ async function fetchTrackerPositions() {
         Authorization: `Bearer ${accessToken}`
       }
     });
-
     return response.data;
   } catch (error) {
     console.error("API error:", error.response?.data || error.message);
