@@ -2,7 +2,6 @@
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const open = require("open");
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -18,11 +17,18 @@ const config = {
 
 let accessToken = null;
 
-app.get("/auth", async (req, res) => {
+// Root-Route für Render-Verfügbarkeit (verhindert 502-Fehler)
+app.get("/", (req, res) => {
+  res.send("✅ Tracki-Proxy läuft. Bitte zuerst /auth aufrufen.");
+});
+
+// Schritt 1: Weiterleitung zur Trackimo OAuth2-Anmeldeseite
+app.get("/auth", (req, res) => {
   const authUrl = `${config.auth_url}?client_id=${config.client_id}&response_type=code&redirect_uri=${encodeURIComponent(config.redirect_uri)}`;
   res.redirect(authUrl);
 });
 
+// Schritt 2: Empfang des Auth-Codes und Umtausch gegen ein Access Token
 app.get("/callback", async (req, res) => {
   const code = req.query.code;
   try {
@@ -36,13 +42,14 @@ app.get("/callback", async (req, res) => {
     accessToken = tokenResponse.data.access_token;
     res.send("✅ Erfolgreich verbunden! Du kannst nun /api/trackers aufrufen.");
   } catch (error) {
-    res.status(500).send("Token-Austausch fehlgeschlagen. " + JSON.stringify(error.response?.data || error.message));
+    res.status(500).send("❌ Token-Austausch fehlgeschlagen: " + JSON.stringify(error.response?.data || error.message));
   }
 });
 
+// Schritt 3: Tracker-Daten mit gültigem Access Token abrufen
 app.get("/api/trackers", async (req, res) => {
   if (!accessToken) {
-    return res.status(401).json({ error: "Bitte zuerst /auth aufrufen und Zugang gewähren." });
+    return res.status(401).json({ error: "❌ Bitte zuerst /auth aufrufen und Zugang gewähren." });
   }
   try {
     const response = await axios.get("https://plus.trackimo.com/api/v2/devices", {
@@ -57,5 +64,5 @@ app.get("/api/trackers", async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server läuft auf Port ${port}`);
+  console.log(`🚀 Server läuft auf Port ${port}`);
 });
