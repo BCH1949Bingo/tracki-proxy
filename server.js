@@ -1,8 +1,8 @@
-const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
-const qs = require('qs');
-
+// server.js mit OAuth2 Authorization Code Flow
+const express = require("express");
+const axios = require("axios");
+const cors = require("cors");
+const open = require("open");
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -11,57 +11,51 @@ app.use(cors());
 const config = {
   client_id: "bf6677e6-d489-4932-aa98-b01890b2793f",
   client_secret: "b95f862a26ed9d2e26f82530c9c747e8",
-  redirect_uri: "https://plus.trackimo.com/api/internal/v1/oauth_redirect"
+  redirect_uri: "https://tracki-proxy.onrender.com/callback",
+  auth_url: "https://plus.trackimo.com/api/v2/oauth/authorize",
+  token_url: "https://plus.trackimo.com/api/v2/oauth/token",
 };
 
 let accessToken = null;
 
-async function getAccessToken() {
+app.get("/auth", async (req, res) => {
+  const authUrl = `${config.auth_url}?client_id=${config.client_id}&response_type=code&redirect_uri=${encodeURIComponent(config.redirect_uri)}`;
+  res.redirect(authUrl);
+});
+
+app.get("/callback", async (req, res) => {
+  const code = req.query.code;
   try {
-    const response = await axios.post(
-      "https://plus.trackimo.com/api/v2/oauth/token",
-      qs.stringify({
-        client_id: config.client_id,
-        client_secret: config.client_secret,
-        grant_type: "client_credentials",
-        redirect_uri: config.redirect_uri
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
-    accessToken = response.data.access_token;
-    console.log("Token erhalten:", accessToken);
+    const tokenResponse = await axios.post(config.token_url, {
+      grant_type: "authorization_code",
+      client_id: config.client_id,
+      client_secret: config.client_secret,
+      redirect_uri: config.redirect_uri,
+      code: code,
+    });
+    accessToken = tokenResponse.data.access_token;
+    res.send("✅ Erfolgreich verbunden! Du kannst nun /api/trackers aufrufen.");
   } catch (error) {
-    console.error("Token error:", error.response?.data || error.message);
+    res.status(500).send("Token-Austausch fehlgeschlagen. " + JSON.stringify(error.response?.data || error.message));
   }
-}
+});
 
-async function fetchTrackerPositions() {
+app.get("/api/trackers", async (req, res) => {
   if (!accessToken) {
-    await getAccessToken();
+    return res.status(401).json({ error: "Bitte zuerst /auth aufrufen und Zugang gewähren." });
   }
-
   try {
     const response = await axios.get("https://plus.trackimo.com/api/v2/devices", {
       headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
+        Authorization: `Bearer ${accessToken}`,
+      },
     });
-    return response.data;
+    res.json(response.data);
   } catch (error) {
-    console.error("API error:", error.response?.data || error.message);
-    return [];
+    res.status(500).json({ error: error.response?.data || error.message });
   }
-}
-
-app.get("/api/trackers", async (req, res) => {
-  const positions = await fetchTrackerPositions();
-  res.json(positions);
 });
 
 app.listen(port, () => {
-  console.log(`Tracki proxy server running on port ${port}`);
+  console.log(`Server läuft auf Port ${port}`);
 });
